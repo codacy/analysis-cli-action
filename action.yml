@@ -1,0 +1,152 @@
+name: "Codacy Analysis CLI"
+author: "Codacy"
+description: "Run Codacy static analysis with the Codacy Analysis CLI and optionally upload the results to Codacy"
+branding:
+  icon: "check"
+  color: "gray-dark"
+
+inputs:
+  project-token:
+    required: false
+    description: >-
+      Recommended. Codacy project (repository) API token. Used to fetch the repository's
+      Codacy configuration and to upload results. Store it as a secret.
+  api-token:
+    required: false
+    description: >-
+      Codacy account API token, for setups that share one token across many repositories.
+      The repository is identified by provider, owner and repository. Ignored when
+      project-token is set.
+  provider:
+    required: false
+    description: >-
+      Account-token mode: Git provider of the repository (gh, ghe, gl, bb).
+      Defaults to gh on github.com and ghe on GitHub Enterprise Server.
+  owner:
+    required: false
+    description: "Account-token mode: organization that owns the repository. Defaults to the current repository owner."
+  repository:
+    required: false
+    description: "Account-token mode: repository name. Defaults to the current repository."
+  config-source:
+    required: false
+    default: "auto"
+    description: >-
+      Where the analysis configuration comes from. 'local' uses the committed config-file;
+      'remote' fetches the repository's configuration from Codacy (needs a token);
+      'discover' generates one from the repository's detected stack (init --auto).
+      'auto' picks local if config-file exists, else remote if a token is set, else discover.
+  config-file:
+    required: false
+    default: ".codacy/codacy.config.json"
+    description: "Path of the committed Codacy Analysis CLI configuration, relative to the repository root."
+  tool:
+    required: false
+    description: "Only run these tools (tool IDs, comma- or newline-separated, e.g. ESLint9,Ruff). Default: every configured tool."
+  path:
+    required: false
+    default: "."
+    description: "File, directory or quoted glob to analyze, relative to the repository root."
+  format:
+    required: false
+    default: "sarif"
+    description: "Report format: sarif or json. Both can be uploaded to Codacy; use sarif for GitHub code scanning."
+  output:
+    required: false
+    description: "Path of the report file. Default: codacy-results.sarif (or .json)."
+  upload:
+    required: false
+    default: "false"
+    description: >-
+      Upload the results to Codacy for the analyzed commit. Requires project-token or api-token,
+      and "Run analysis through build server" enabled in the repository settings on Codacy.
+  install-dependencies:
+    required: false
+    default: "true"
+    description: "Install the tools the configuration needs. When false, unavailable tools are skipped."
+  parallel-tools:
+    required: false
+    description: "Maximum number of tools to run concurrently (CLI default: 1)."
+  tool-timeout:
+    required: false
+    description: "Per-tool timeout in milliseconds."
+  verbose:
+    required: false
+    default: "false"
+    description: "Log at debug level."
+  cli-version:
+    required: false
+    default: "latest"
+    description: "Version of @codacy/analysis-cli to install from npm."
+  codacy-api-base-url:
+    required: false
+    description: "Codacy API URL, for self-hosted Codacy (default: https://app.codacy.com)."
+  codacy-results-api-base-url:
+    required: false
+    description: "Codacy results API URL used by upload, for self-hosted Codacy (default: https://api.codacy.com/2.0)."
+
+outputs:
+  report:
+    description: "Path of the report file."
+    value: ${{ steps.analyze.outputs.report }}
+  issues:
+    description: "Number of issues found."
+    value: ${{ steps.analyze.outputs.issues }}
+
+runs:
+  using: "composite"
+  steps:
+    # The CLI needs Node.js 20+. GitHub-hosted runners ship it; only set it up
+    # when it is missing, so the action never changes the caller's Node version.
+    - name: "Check Node.js"
+      id: node
+      shell: bash
+      run: |
+        if node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+          echo "setup=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "setup=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: "Set up Node.js"
+      if: steps.node.outputs.setup == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: "Install Codacy Analysis CLI"
+      id: install
+      shell: bash
+      env:
+        INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+      run: '"$GITHUB_ACTION_PATH/scripts/install.sh"'
+
+    # Every input reaches the script as an environment variable, never by
+    # expression interpolation into the script body, so no input value can be
+    # executed as shell code.
+    - name: "Run Codacy Analysis CLI"
+      id: analyze
+      shell: bash
+      env:
+        CODACY_ANALYSIS_BIN: ${{ steps.install.outputs.bin }}
+        INPUT_PROJECT_TOKEN: ${{ inputs.project-token }}
+        INPUT_API_TOKEN: ${{ inputs.api-token }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_OWNER: ${{ inputs.owner }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_CONFIG_SOURCE: ${{ inputs.config-source }}
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_TOOL: ${{ inputs.tool }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_UPLOAD: ${{ inputs.upload }}
+        INPUT_INSTALL_DEPENDENCIES: ${{ inputs.install-dependencies }}
+        INPUT_PARALLEL_TOOLS: ${{ inputs.parallel-tools }}
+        INPUT_TOOL_TIMEOUT: ${{ inputs.tool-timeout }}
+        INPUT_VERBOSE: ${{ inputs.verbose }}
+        INPUT_CODACY_API_BASE_URL: ${{ inputs.codacy-api-base-url }}
+        INPUT_CODACY_RESULTS_API_BASE_URL: ${{ inputs.codacy-results-api-base-url }}
+        # A pull_request run checks out a merge commit; results belong to the PR head.
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: '"$GITHUB_ACTION_PATH/scripts/run.sh"'
