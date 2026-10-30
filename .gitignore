@@ -1,0 +1,6 @@
+# Codacy Analysis CLI files from running `codacy-analysis init` / `analyze` in
+# this repository. CI fetches the configuration from Codacy (config-source:
+# remote), so a committed one would take precedence over it in `auto` mode.
+/.codacy/
+# Reports written by the action or the CLI when run locally
+/codacy-results.*
