@@ -23,6 +23,7 @@ and optionally uploading the results to Codacy.
   - [From codacy-cli-v2-action](#from-codacy-cli-v2-action)
   - [From codacy-analysis-cli-action](#from-codacy-analysis-cli-action)
 - [Contributing](#contributing)
+- [License](#license)
 
 ## Quick start
 
@@ -236,3 +237,7 @@ equivalent: use Codacy's [pull request quality gate](#block-pull-requests-that-a
 
 Bug reports and contributions are welcome:
 [open an issue](https://github.com/codacy/analysis-cli-action/issues).
+
+## License
+
+[MIT](LICENSE)
