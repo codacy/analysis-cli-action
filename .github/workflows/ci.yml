@@ -49,3 +49,36 @@ jobs:
           test -f "$REPORT" || { echo "::error::no report at '$REPORT'"; exit 1; }
           [ "$ISSUES" -ge 1 ] || { echo "::error::expected issues in the fixture, got '$ISSUES'"; exit 1; }
           echo "Report $REPORT has $ISSUES issue(s)"
+
+  # The documented flow end to end: this repository is itself on Codacy, with
+  # "Run analysis through build server" on, so the action fetches its Codacy
+  # configuration with the project token and uploads the results for the
+  # commit. Everything involved is public. Pull requests from forks (and
+  # Dependabot) get no secrets, so the job runs only for this repository's
+  # own branches.
+  integration:
+    name: Codacy integration (project token)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit the results are uploaded for, not the PR merge commit
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Run the action
+        id: codacy
+        uses: ./
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          config-source: remote
+          upload: true
+
+      - name: Check the outputs
+        env:
+          REPORT: ${{ steps.codacy.outputs.report }}
+          ISSUES: ${{ steps.codacy.outputs.issues }}
+        run: |
+          test -f "$REPORT" || { echo "::error::no report at '$REPORT'"; exit 1; }
+          [ "$ISSUES" -ge 1 ] || { echo "::error::expected at least the smoke-test issue, got '$ISSUES'"; exit 1; }
+          echo "Uploaded $ISSUES issue(s) from $REPORT"
