@@ -53,12 +53,15 @@ jobs:
   # The documented flow end to end: this repository is itself on Codacy, with
   # "Run analysis through build server" on, so the action fetches its Codacy
   # configuration with the project token and uploads the results for the
-  # commit. Everything involved is public. Pull requests from forks (and
-  # Dependabot) get no secrets, so the job runs only for this repository's
-  # own branches.
+  # commit. Everything involved is public. Pull requests from forks get no
+  # secrets, and neither do Dependabot's, although its branches live in this
+  # repository, so the job runs only for this repository's own branches and
+  # never for Dependabot.
   integration:
     name: Codacy integration (project token)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +77,23 @@ jobs:
           config-source: remote
           upload: true
 
+      # Asserts one known finding rather than "at least one issue": the tools
+      # and patterns come from Codacy (config-source: remote), so the total is
+      # not this repository's to fix, while SC2086 on smoke-test/sample.sh is
+      # deterministic for as long as ShellCheck is enabled there. Without it the
+      # job could pass having analyzed and uploaded nothing.
       - name: Check the outputs
         env:
           REPORT: ${{ steps.codacy.outputs.report }}
           ISSUES: ${{ steps.codacy.outputs.issues }}
         run: |
           test -f "$REPORT" || { echo "::error::no report at '$REPORT'"; exit 1; }
-          [ "$ISSUES" -ge 1 ] || { echo "::error::expected at least the smoke-test issue, got '$ISSUES'"; exit 1; }
-          echo "Uploaded $ISSUES issue(s) from $REPORT"
+          found="$(jq '[.runs[].results[]
+            | select(.ruleId == "shellcheck_SC2086"
+                and .locations[0].physicalLocation.artifactLocation.uri == "smoke-test/sample.sh")]
+            | length' "$REPORT")"
+          if [ "$found" -lt 1 ]; then
+            echo "::error::ShellCheck SC2086 on smoke-test/sample.sh is missing from $REPORT. Either the analysis did not run, or ShellCheck (or that pattern) was disabled for this repository on Codacy."
+            exit 1
+          fi
+          echo "Uploaded $ISSUES issue(s) from $REPORT, including the smoke-test finding"
