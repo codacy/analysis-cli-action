@@ -1,4 +1,4 @@
-name: "Codacy Analysis CLI"
+name: "Codacy Analysis CLI GitHub Action"
 author: "Codacy"
 description: "Run Codacy static analysis with the Codacy Analysis CLI and optionally upload the results to Codacy"
 branding:
